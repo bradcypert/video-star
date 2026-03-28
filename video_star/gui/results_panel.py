@@ -96,8 +96,9 @@ class ResultsPanel(ctk.CTkFrame):
         box = self._tab_refs.get(tab)
         if isinstance(box, ctk.CTkTextbox):
             content = box.get("1.0", "end").strip()
-            self.clipboard_clear()
-            self.clipboard_append(content)
+            root = self.winfo_toplevel()
+            root.clipboard_clear()
+            root.clipboard_append(content)
 
     def _open_file(self, tab: str) -> None:
         key_map = {

@@ -29,22 +29,30 @@ except ImportError:
 
 # ── Analysis ───────────────────────────────────────────────────────────────────
 
+_hidden = [
+    "customtkinter",
+    "PIL",
+    "PIL.Image",
+    "PIL.ImageDraw",
+    "PIL.ImageFont",
+    "deepgram",
+    "openai",
+    "dotenv",
+]
+# Only add tkinterdnd2 if it is actually installed; omitting it avoids a
+# hard build failure when the optional drag-and-drop package is absent.
+try:
+    import tkinterdnd2  # noqa: F401
+    _hidden.append("tkinterdnd2")
+except ImportError:
+    pass
+
 a = Analysis(
     [str(Path("video_star") / "__main__.py")],
     pathex=[str(Path(".").resolve())],
     binaries=[],
     datas=datas,
-    hiddenimports=[
-        "customtkinter",
-        "tkinterdnd2",
-        "PIL",
-        "PIL.Image",
-        "PIL.ImageDraw",
-        "PIL.ImageFont",
-        "deepgram",
-        "openai",
-        "dotenv",
-    ],
+    hiddenimports=_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

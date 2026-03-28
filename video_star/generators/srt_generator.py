@@ -20,9 +20,7 @@ def generate_srt(result: PipelineResult) -> str:
     index = 1
 
     for para in result.paragraphs:
-        # Wrap long paragraphs into subtitle-sized chunks
-        chunks = _split_paragraph(para)
-        for start, end, text in chunks:
+        for start, end, text in _split_paragraph(para):
             ts_start = seconds_to_srt(start)
             ts_end = seconds_to_srt(end)
             blocks.append(f"{index}\n{ts_start} --> {ts_end}\n{text}\n")
@@ -57,50 +55,51 @@ def generate_transcript_txt(result: PipelineResult) -> str:
 def _split_paragraph(
     para: TranscriptParagraph,
 ) -> list[tuple[float, float, str]]:
-    """Split a long paragraph into ≤ _MAX_LINE_CHARS × _MAX_LINES chunks.
+    """Split a paragraph into subtitle-sized (start, end, text) chunks.
 
-    Returns a list of (start_sec, end_sec, text) tuples.
+    Each chunk fits within _MAX_LINE_CHARS × _MAX_LINES characters.
+    Timestamps are interpolated linearly across chunks.
     """
     text = para.text.strip()
     if not text:
         return []
 
-    duration = para.end - para.start
-    words = text.split()
     max_chars = _MAX_LINE_CHARS * _MAX_LINES
+    duration = para.end - para.start
 
+    # Fast path: the whole paragraph fits in one block.
     if len(text) <= max_chars:
         return [(para.start, para.end, _wrap(text))]
 
-    # Split into word-boundary chunks
-    chunks: list[tuple[float, float, str]] = []
-    current_words: list[str] = []
-    total_words = len(words)
+    # Split at word boundaries without exceeding max_chars per chunk.
+    raw_chunks: list[str] = []
+    current: list[str] = []
+    for word in text.split():
+        candidate = " ".join(current + [word])
+        if len(candidate) > max_chars and current:
+            raw_chunks.append(" ".join(current))
+            current = [word]
+        else:
+            current.append(word)
+    if current:
+        raw_chunks.append(" ".join(current))
 
-    def _flush(w: list[str], chunk_index: int, total_chunks: int) -> None:
-        chunk_text = " ".join(w)
-        chunk_start = para.start + (chunk_index / total_chunks) * duration
-        chunk_end = para.start + ((chunk_index + 1) / total_chunks) * duration
-        chunks.append((chunk_start, chunk_end, _wrap(chunk_text)))
+    if not raw_chunks:
+        return [(para.start, para.end, _wrap(text))]
 
-    chunk_size = max(1, max_chars // (sum(len(w) + 1 for w in words) // max(1, len(words))))
-    chunk_size = max(8, chunk_size)  # at least 8 words per chunk
-    total_chunks = max(1, (total_words + chunk_size - 1) // chunk_size)
-
-    for i, word in enumerate(words):
-        current_words.append(word)
-        if len(" ".join(current_words)) >= max_chars:
-            chunk_idx = len(chunks)
-            _flush(current_words, chunk_idx, total_chunks)
-            current_words = []
-
-    if current_words:
-        _flush(current_words, len(chunks), total_chunks)
-
-    return chunks if chunks else [(para.start, para.end, _wrap(text[:max_chars]))]
+    # Distribute timestamps evenly across chunks.
+    n = len(raw_chunks)
+    return [
+        (
+            para.start + (i / n) * duration,
+            para.start + ((i + 1) / n) * duration,
+            _wrap(chunk),
+        )
+        for i, chunk in enumerate(raw_chunks)
+    ]
 
 
 def _wrap(text: str) -> str:
-    """Wrap text to two lines of _MAX_LINE_CHARS each."""
+    """Wrap text to _MAX_LINES lines of _MAX_LINE_CHARS each."""
     lines = textwrap.wrap(text, width=_MAX_LINE_CHARS)
     return "\n".join(lines[:_MAX_LINES])

@@ -149,10 +149,15 @@ class SettingsDialog(ctk.CTkToplevel):
 
                 client = DeepgramClient(key)
                 client.manage.v("1").get_projects()
-                self.after(0, lambda: self._set_status("✓ Connected to Deepgram!", "green"))
+                msg, color = "✓ Connected to Deepgram!", "green"
             except Exception as exc:
-                msg = f"Connection failed: {exc}"
-                self.after(0, lambda: self._set_status(msg, "red"))
+                msg, color = f"Connection failed: {exc}", "red"
+
+            # The dialog may have been closed while the thread was running.
+            try:
+                self.after(0, lambda: self._set_status(msg, color))
+            except Exception:
+                pass
 
         threading.Thread(target=_run, daemon=True).start()
 

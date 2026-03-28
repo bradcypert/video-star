@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -26,7 +28,6 @@ def extract_audio(
     """
     ffmpeg = find_ffmpeg(ffmpeg_path)
 
-    # Verify the file has an audio stream
     try:
         ffprobe = find_ffprobe(ffmpeg)
         duration = probe_duration(video_path, ffprobe)
@@ -45,7 +46,6 @@ def extract_audio(
         "-acodec", "pcm_s16le",
         "-ar", "16000",
         "-ac", "1",
-        # Write progress info to stdout for parsing
         "-progress", "pipe:1",
         str(out_path),
     ]
@@ -56,6 +56,19 @@ def extract_audio(
         stderr=subprocess.PIPE,
         text=True,
     )
+
+    # Drain stderr in a background thread to prevent pipe-buffer deadlock.
+    # ffmpeg is verbose; if we don't read stderr while also reading stdout
+    # the OS pipe buffer fills and the subprocess blocks.
+    stderr_buf = io.StringIO()
+
+    def _drain_stderr() -> None:
+        assert process.stderr is not None
+        for line in process.stderr:
+            stderr_buf.write(line)
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
 
     if on_progress:
         assert process.stdout is not None
@@ -70,9 +83,10 @@ def extract_audio(
                     pass
 
     process.wait()
+    stderr_thread.join(timeout=5)
 
     if process.returncode != 0:
-        stderr = process.stderr.read() if process.stderr else ""
+        stderr = stderr_buf.getvalue()
         out_path.unlink(missing_ok=True)
         raise AudioExtractionError(
             f"ffmpeg exited with code {process.returncode}:\n{stderr}"

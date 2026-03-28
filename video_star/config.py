@@ -30,6 +30,13 @@ class ConfigError(Exception):
     pass
 
 
+def _int_env(key: str, default: int) -> int:
+    try:
+        return int(os.getenv(key, str(default)))
+    except ValueError:
+        return default
+
+
 class Settings:
     DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
@@ -37,7 +44,7 @@ class Settings:
         os.path.expanduser(os.getenv("OUTPUT_DIR", "~/Videos/video-star-output"))
     )
     FFMPEG_PATH: str = os.getenv("FFMPEG_PATH", "")
-    THUMBNAIL_COUNT: int = int(os.getenv("THUMBNAIL_COUNT", "5"))
+    THUMBNAIL_COUNT: int = _int_env("THUMBNAIL_COUNT", 5)
     USE_THUMBNAIL_OVERLAY: bool = os.getenv("USE_THUMBNAIL_OVERLAY", "false").lower() == "true"
     USE_OPENAI_DESCRIPTION: bool = bool(os.getenv("OPENAI_API_KEY", ""))
 
@@ -51,7 +58,7 @@ class Settings:
             os.path.expanduser(os.getenv("OUTPUT_DIR", "~/Videos/video-star-output"))
         )
         cls.FFMPEG_PATH = os.getenv("FFMPEG_PATH", "")
-        cls.THUMBNAIL_COUNT = int(os.getenv("THUMBNAIL_COUNT", "5"))
+        cls.THUMBNAIL_COUNT = _int_env("THUMBNAIL_COUNT", 5)
         cls.USE_THUMBNAIL_OVERLAY = (
             os.getenv("USE_THUMBNAIL_OVERLAY", "false").lower() == "true"
         )

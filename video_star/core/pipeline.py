@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,6 +54,7 @@ class PipelineRunner:
         cb = self._cb
         s = self._settings
         audio_path: Path | None = None
+        thumb_tmp_dir: Path | None = None
 
         try:
             s.validate()
@@ -101,18 +103,24 @@ class PipelineRunner:
             result.chapters_content = generate_chapters(result)
 
             cb.on_log("Generating description…")
-            result.description_content = generate_description(result, s)
+            try:
+                result.description_content = generate_description(result, s)
+            except Exception as exc:
+                cb.on_log(f"  Warning: description generation failed ({exc}); using template fallback.")
+                from video_star.generators.description_generator import _template_description
+                result.description_content = _template_description(result)
 
             cb.on_log("Generating show notes…")
             result.show_notes_content = generate_show_notes(result)
 
             cb.on_stage("Extracting thumbnail candidates…", 0.82)
             cb.on_log("Extracting thumbnail frames…")
+            thumb_tmp_dir = s.OUTPUT_DIR / "_thumbnails_tmp"
             result.thumbnail_paths = extract_thumbnail_candidates(
                 video_path=video_path,
                 chapters=result.chapters,
                 count=s.THUMBNAIL_COUNT,
-                output_dir=s.OUTPUT_DIR / "_thumbnails_tmp",
+                output_dir=thumb_tmp_dir,
                 ffmpeg_path=s.FFMPEG_PATH,
                 use_overlay=s.USE_THUMBNAIL_OVERLAY,
             )
@@ -127,15 +135,16 @@ class PipelineRunner:
 
             # Move thumbnails into the output folder
             if result.thumbnail_paths and result.output_dir:
-                thumb_dir = result.output_dir / "thumbnails"
-                thumb_dir.mkdir(exist_ok=True)
+                final_thumb_dir = result.output_dir / "thumbnails"
+                final_thumb_dir.mkdir(exist_ok=True)
                 moved: list[Path] = []
                 for tp in result.thumbnail_paths:
-                    dest = thumb_dir / tp.name
+                    dest = final_thumb_dir / tp.name
                     try:
                         tp.rename(dest)
                         moved.append(dest)
-                    except Exception:
+                    except Exception as exc:
+                        cb.on_log(f"  Warning: could not move thumbnail {tp.name}: {exc}")
                         moved.append(tp)
                 result.thumbnail_paths = moved
 
@@ -148,5 +157,11 @@ class PipelineRunner:
             if audio_path and audio_path.exists():
                 try:
                     audio_path.unlink()
+                except Exception:
+                    pass
+            # Clean up the temporary thumbnail staging directory
+            if thumb_tmp_dir and thumb_tmp_dir.exists():
+                try:
+                    shutil.rmtree(thumb_tmp_dir, ignore_errors=True)
                 except Exception:
                     pass

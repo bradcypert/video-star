@@ -43,6 +43,16 @@ def transcribe(
         language="en-US",
     )
 
+    file_size_mb = audio_path.stat().st_size / (1024 * 1024)
+    if on_log:
+        on_log(f"Audio file size: {file_size_mb:.1f} MB")
+    if file_size_mb > 500:
+        if on_log:
+            on_log(
+                f"Warning: audio file is large ({file_size_mb:.0f} MB). "
+                "Upload may take several minutes."
+            )
+
     audio_bytes = audio_path.read_bytes()
     payload: FileSource = {"buffer": audio_bytes}
 
