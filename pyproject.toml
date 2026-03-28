@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "video-star"
+version = "0.1.0"
+description = "YouTube post-production pipeline powered by Deepgram"
+requires-python = ">=3.10"
+dependencies = [
+    "customtkinter>=5.2.0",
+    "tkinterdnd2>=0.3.0",
+    "deepgram-sdk>=3.0.0",
+    "python-dotenv>=1.0.0",
+    "Pillow>=10.0.0",
+    "openai>=1.0.0",
+]
+
+[project.scripts]
+video-star = "video_star.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["video_star*"]
