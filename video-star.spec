@@ -10,47 +10,52 @@
 import sys
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
-# ── Locate package data that PyInstaller won't find automatically ──────────────
+# ── Collect packages that use complex internal import chains ──────────────────
+# PyInstaller's static analysis only follows the top-level __init__.py; these
+# packages re-export symbols from deep submodules that get missed.  collect_all
+# recursively gathers every submodule, data file, and binary in the tree.
+
+datas: list = []
+binaries: list = []
+_hidden: list = []
+
+for _pkg in ("deepgram", "openai"):
+    _d, _b, _h = collect_all(_pkg)
+    datas += _d
+    binaries += _b
+    _hidden += _h
+
+# ── Locate GUI package data ────────────────────────────────────────────────────
 
 import customtkinter
-CTK_PATH = Path(customtkinter.__file__).parent
-
-datas = [
-    (str(CTK_PATH), "customtkinter"),
-]
+datas.append((str(Path(customtkinter.__file__).parent), "customtkinter"))
 
 try:
     import tkinterdnd2
-    TKDND_PATH = Path(tkinterdnd2.__file__).parent
-    datas.append((str(TKDND_PATH), "tkinterdnd2"))
+    datas.append((str(Path(tkinterdnd2.__file__).parent), "tkinterdnd2"))
+    _hidden.append("tkinterdnd2")
 except ImportError:
-    pass  # drag-and-drop optional
+    pass  # drag-and-drop is optional
 
-# ── Analysis ───────────────────────────────────────────────────────────────────
+# ── Additional hidden imports ─────────────────────────────────────────────────
 
-_hidden = [
+_hidden += [
     "customtkinter",
     "PIL",
     "PIL.Image",
     "PIL.ImageDraw",
     "PIL.ImageFont",
-    "deepgram",
-    "openai",
     "dotenv",
 ]
-# Only add tkinterdnd2 if it is actually installed; omitting it avoids a
-# hard build failure when the optional drag-and-drop package is absent.
-try:
-    import tkinterdnd2  # noqa: F401
-    _hidden.append("tkinterdnd2")
-except ImportError:
-    pass
+
+# ── Analysis ───────────────────────────────────────────────────────────────────
 
 a = Analysis(
     [str(Path("video_star") / "__main__.py")],
     pathex=[str(Path(".").resolve())],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=_hidden,
     hookspath=[],

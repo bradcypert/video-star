@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from deepgram import DeepgramClient, PrerecordedOptions, FileSource
+from deepgram import DeepgramClient, PrerecordedOptions
 
 
 class TranscriptionError(Exception):
@@ -54,7 +54,7 @@ def transcribe(
             )
 
     audio_bytes = audio_path.read_bytes()
-    payload: FileSource = {"buffer": audio_bytes}
+    payload = {"buffer": audio_bytes}
 
     last_exc: Exception | None = None
     for attempt in range(1, _MAX_RETRIES + 1):
