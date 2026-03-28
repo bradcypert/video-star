@@ -1,0 +1,102 @@
+name: Build & Release
+
+# Triggers:
+#   • Push to main      → updates the rolling "nightly" pre-release
+#   • Push of v* tag    → creates a proper versioned release
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write   # needed to create/delete releases and tags
+
+jobs:
+  build-windows:
+    name: Build Windows executable
+    runs-on: windows-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so nightly can read commit info
+
+      # ── Python ──────────────────────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # ── Dependencies ────────────────────────────────────────────────────────
+      - name: Install project dependencies
+        run: pip install -e .
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      - name: Build single-file executable
+        run: pyinstaller video-star.spec --distpath dist --workpath build --noconfirm
+
+      # ── Determine release metadata ───────────────────────────────────────────
+      - name: Determine release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag_name=${TAG}"                              >> "$GITHUB_OUTPUT"
+            echo "release_name=${TAG}"                         >> "$GITHUB_OUTPUT"
+            echo "artifact=video-star-${TAG}-windows.exe"      >> "$GITHUB_OUTPUT"
+            echo "prerelease=false"                            >> "$GITHUB_OUTPUT"
+            echo "generate_notes=true"                         >> "$GITHUB_OUTPUT"
+            echo "body="                                       >> "$GITHUB_OUTPUT"
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            COMMIT_MSG=$(git log -1 --pretty=%s)
+            echo "tag_name=nightly"                            >> "$GITHUB_OUTPUT"
+            echo "release_name=Nightly build"                  >> "$GITHUB_OUTPUT"
+            echo "artifact=video-star-nightly-windows.exe"     >> "$GITHUB_OUTPUT"
+            echo "prerelease=true"                             >> "$GITHUB_OUTPUT"
+            echo "generate_notes=false"                        >> "$GITHUB_OUTPUT"
+            # Multiline body needs special quoting
+            {
+              echo "body<<EOF"
+              echo "**Automated build from \`main\` — not a stable release.**"
+              echo ""
+              echo "Commit: \`${SHORT_SHA}\` — ${COMMIT_MSG}"
+              echo "Built:  $(date -u '+%Y-%m-%d %H:%M UTC')"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Rename artifact to the release filename ──────────────────────────────
+      - name: Rename artifact
+        shell: bash
+        run: mv dist/video-star.exe "dist/${{ steps.meta.outputs.artifact }}"
+
+      # ── Nightly: delete the old release + tag so we can replace it ───────────
+      - name: Delete existing nightly release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes --repo "$GITHUB_REPOSITORY" || true
+          git push --delete origin nightly || true
+
+      # ── Publish release ──────────────────────────────────────────────────────
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:             ${{ steps.meta.outputs.tag_name }}
+          name:                 ${{ steps.meta.outputs.release_name }}
+          prerelease:           ${{ steps.meta.outputs.prerelease }}
+          generate_release_notes: ${{ steps.meta.outputs.generate_notes }}
+          body:                 ${{ steps.meta.outputs.body }}
+          files:                dist/${{ steps.meta.outputs.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

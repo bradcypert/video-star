@@ -16,8 +16,9 @@ venv/
 .env
 *.env
 
-# PyInstaller
+# PyInstaller — ignore generated specs but keep our intentional one
 *.spec
+!video-star.spec
 dist/
 build/
 
