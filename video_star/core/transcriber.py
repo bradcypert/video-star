@@ -63,9 +63,9 @@ def transcribe(
                 on_log(
                     f"Uploading audio to Deepgram (attempt {attempt}/{_MAX_RETRIES})…"
                 )
-            response = client.listen.prerecorded.v("1").transcribe_file(
-                payload, options
-            )
+            # SDK v6+ uses listen.rest; v3 used listen.prerecorded.
+            endpoint = getattr(client.listen, "rest", None) or client.listen.prerecorded
+            response = endpoint.v("1").transcribe_file(payload, options)
             if on_log:
                 on_log("Transcription complete.")
             # Return the raw dict so it can be saved and re-processed offline
