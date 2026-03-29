@@ -36,7 +36,7 @@ _PARAMS = urllib.parse.urlencode({
     "utterances": "true",
     "diarize": "true",
     "summarize": "v2",
-    "detect_topics": "true",
+    "topics": "true",
     "language": "en-US",
 })
 
