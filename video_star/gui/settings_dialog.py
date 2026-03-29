@@ -12,6 +12,26 @@ import customtkinter as ctk
 from video_star.config import Settings
 
 
+def _validate_deepgram_key(api_key: str) -> None:
+    """Ping the Deepgram API to confirm the key is valid.
+
+    Uses a raw HTTP request so it is not coupled to any SDK version.
+    """
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(
+        "https://api.deepgram.com/v1/projects",
+        headers={"Authorization": f"Token {api_key}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status not in (200, 201):
+                raise ValueError(f"Unexpected status {resp.status}")
+    except urllib.error.HTTPError as exc:
+        raise ValueError(f"HTTP {exc.code}: invalid key or no permissions") from exc
+
+
 class SettingsDialog(ctk.CTkToplevel):
     def __init__(self, parent: ctk.CTk) -> None:
         super().__init__(parent)
@@ -145,10 +165,7 @@ class SettingsDialog(ctk.CTkToplevel):
 
         def _run() -> None:
             try:
-                from deepgram import DeepgramClient
-
-                client = DeepgramClient(key)
-                client.manage.v("1").get_projects()
+                _validate_deepgram_key(key)
                 msg, color = "✓ Connected to Deepgram!", "green"
             except Exception as exc:
                 msg, color = f"Connection failed: {exc}", "red"
