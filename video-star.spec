@@ -12,22 +12,18 @@ import os
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
-# ── Collect packages that use complex internal import chains ──────────────────
-# PyInstaller's static analysis only follows the top-level __init__.py; these
-# packages re-export symbols from deep submodules that get missed.  collect_all
-# recursively gathers every submodule, data file, and binary in the tree.
+# ── openai: complex import chain that PyInstaller's static analysis misses ────
 
 datas: list = []
 binaries: list = []
 _hidden: list = []
 
-for _pkg in ("deepgram", "openai"):
-    _d, _b, _h = collect_all(_pkg)
-    datas += _d
-    binaries += _b
-    _hidden += _h
+_d, _b, _h = collect_all("openai")
+datas += _d
+binaries += _b
+_hidden += _h
 
-# ── Locate GUI package data ────────────────────────────────────────────────────
+# ── GUI package data ───────────────────────────────────────────────────────────
 
 import customtkinter
 datas.append((str(Path(customtkinter.__file__).parent), "customtkinter"))
@@ -39,7 +35,7 @@ try:
 except ImportError:
     pass  # drag-and-drop is optional
 
-# ── Additional hidden imports ─────────────────────────────────────────────────
+# ── Hidden imports ─────────────────────────────────────────────────────────────
 
 _hidden += [
     "customtkinter",
