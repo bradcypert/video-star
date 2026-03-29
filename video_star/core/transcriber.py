@@ -47,7 +47,7 @@ def transcribe(
     if not api_key:
         raise TranscriptionError("Deepgram API key is not configured.")
 
-    client = DeepgramClient(api_key)
+    client = DeepgramClient(api_key=api_key)
 
     file_size_mb = audio_path.stat().st_size / (1024 * 1024)
     if on_log:
