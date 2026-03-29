@@ -16,7 +16,8 @@ def find_ffmpeg(override: str = "") -> str:
     """Return the path to the ffmpeg binary.
 
     Search order:
-    1. ``override`` (from Settings.FFMPEG_PATH)
+    1. ``override`` (from Settings.FFMPEG_PATH) — accepts a file path or a
+       directory (will look for ffmpeg / ffmpeg.exe inside it)
     2. System PATH
     3. Bundled binary next to this package (assets/bin/ffmpeg or ffmpeg.exe)
     """
@@ -24,7 +25,17 @@ def find_ffmpeg(override: str = "") -> str:
         p = Path(override)
         if p.is_file():
             return str(p)
-        raise FFmpegNotFoundError(f"ffmpeg not found at configured path: {override}")
+        # User pointed at the directory containing the binary (common mistake).
+        if p.is_dir():
+            for name in ("ffmpeg.exe", "ffmpeg"):
+                candidate = p / name
+                if candidate.is_file():
+                    return str(candidate)
+        raise FFmpegNotFoundError(
+            f"ffmpeg not found at configured path: {override}\n"
+            "Set the path to the ffmpeg binary itself (e.g. …\\bin\\ffmpeg.exe), "
+            "or leave it blank to auto-detect."
+        )
 
     found = shutil.which("ffmpeg")
     if found:
