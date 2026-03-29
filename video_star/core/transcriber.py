@@ -1,7 +1,9 @@
 """Deepgram transcription wrapper.
 
-Supports deepgram-sdk v3/v4/v5 (PrerecordedOptions style) and
-v6+ (Fern-generated, keyword-argument style) via runtime detection.
+Uses the PrerecordedOptions + listen.rest.v("1").transcribe_file() API,
+which is the correct full-featured path in deepgram-sdk v3 through v6.
+listen.rest was introduced in v3; v3 also exposes listen.prerecorded as
+an alias, which we fall back to if rest is absent.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from deepgram import DeepgramClient
+from deepgram import DeepgramClient, PrerecordedOptions
 
 
 class TranscriptionError(Exception):
@@ -20,8 +22,7 @@ class TranscriptionError(Exception):
 
 _MAX_RETRIES = 3
 
-# Options forwarded to the Deepgram API regardless of SDK version.
-_OPTIONS = dict(
+_OPTIONS = PrerecordedOptions(
     model="nova-2",
     smart_format=True,
     punctuate=True,
@@ -41,13 +42,15 @@ def transcribe(
 ) -> dict:
     """Upload *audio_path* to Deepgram and return the raw response as a dict.
 
-    Retries up to ``_MAX_RETRIES`` times on network errors with exponential
-    backoff.
+    Retries up to _MAX_RETRIES times on network errors with exponential backoff.
     """
     if not api_key:
         raise TranscriptionError("Deepgram API key is not configured.")
 
     client = DeepgramClient(api_key=api_key)
+
+    # listen.rest is the canonical name (v3+); listen.prerecorded is the older alias.
+    endpoint = getattr(client.listen, "rest", None) or client.listen.prerecorded
 
     file_size_mb = audio_path.stat().st_size / (1024 * 1024)
     if on_log:
@@ -59,13 +62,14 @@ def transcribe(
         )
 
     audio_bytes = audio_path.read_bytes()
+    payload = {"buffer": audio_bytes}
 
     last_exc: Exception | None = None
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             if on_log:
                 on_log(f"Uploading audio to Deepgram (attempt {attempt}/{_MAX_RETRIES})…")
-            response = _call_api(client, audio_bytes)
+            response = endpoint.v("1").transcribe_file(payload, _OPTIONS)
             if on_log:
                 on_log("Transcription complete.")
             return _to_dict(response)
@@ -84,44 +88,17 @@ def transcribe(
     ) from last_exc
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _call_api(client: DeepgramClient, audio_bytes: bytes) -> object:
-    """Dispatch to the correct SDK generation's transcription method."""
-    # SDK v6+ (Fern-generated): options are keyword arguments.
-    # client.listen.v1.media.transcribe_file(request=<bytes>, model=..., ...)
-    v1_media = (
-        getattr(getattr(client.listen, "v1", None), "media", None)
-    )
-    if v1_media is not None:
-        return v1_media.transcribe_file(request=audio_bytes, **_OPTIONS)
-
-    # SDK v3–v5: PrerecordedOptions object.
-    # listen.rest (v4–v5) or listen.prerecorded (v3).
-    from deepgram import PrerecordedOptions  # noqa: PLC0415
-    options = PrerecordedOptions(**_OPTIONS)
-    payload = {"buffer": audio_bytes}
-    endpoint = getattr(client.listen, "rest", None) or client.listen.prerecorded
-    return endpoint.v("1").transcribe_file(payload, options)
-
-
 def _to_dict(response: object) -> dict:
-    """Normalise any SDK response object to a plain Python dict."""
+    """Normalise a Deepgram SDK response to a plain Python dict."""
     if isinstance(response, dict):
         return response
-    # v6 Fern responses expose to_json() → JSON string
-    if hasattr(response, "to_json"):
+    if hasattr(response, "to_json"):           # v3–v6 preferred path
         return json.loads(response.to_json())
-    # v3–v5 responses expose to_dict()
-    if hasattr(response, "to_dict"):
+    if hasattr(response, "to_dict"):           # older fallback
         return response.to_dict()
-    # Pydantic v2
-    if hasattr(response, "model_dump"):
+    if hasattr(response, "model_dump"):        # Pydantic v2
         return response.model_dump()
-    # Pydantic v1
-    if hasattr(response, "dict"):
+    if hasattr(response, "dict"):              # Pydantic v1
         return response.dict()
     raise TranscriptionError(
         f"Cannot convert Deepgram response to dict: {type(response)}"
