@@ -12,6 +12,7 @@ from video_star.core.audio_extractor import extract_audio
 from video_star.core.output_writer import write_outputs
 from video_star.core.post_processor import process_response
 from video_star.core.transcriber import transcribe
+from video_star.generators.chapter_title_generator import refine_chapter_titles
 from video_star.generators.chapters_generator import generate_chapters
 from video_star.generators.description_generator import generate_description
 from video_star.generators.show_notes_generator import generate_show_notes
@@ -96,6 +97,10 @@ class PipelineRunner:
             cb.on_log("Generating SRT transcript…")
             result.srt_content = generate_srt(result)
             result.transcript_txt_content = generate_transcript_txt(result)
+
+            if s.OPENAI_API_KEY:
+                cb.on_log("Refining chapter titles with OpenAI…")
+                result.chapters = refine_chapter_titles(result.chapters, s.OPENAI_API_KEY)
 
             cb.on_log("Generating chapter timestamps…")
             result.chapters_content = generate_chapters(result)
